@@ -22,6 +22,7 @@ References:
    - https://developer.mozilla.org/en-US/docs/JSON#JSON_in_Firefox_2
 */
 
+var sys = require('sys');
 var fs = require('fs');
 var program = require('commander');
 var cheerio = require('cheerio');
@@ -45,8 +46,20 @@ var loadChecks = function(checksfile) {
     return JSON.parse(fs.readFileSync(checksfile));
 };
 
+var checkHtml = function(html, checksfile) {
+    $ = cheerio.load(html);
+    var checks = loadChecks(checksfile).sort();
+    var out = {};
+    for(var ii in checks) {
+        var present = $(checks[ii]).length > 0;
+        out[checks[ii]] = present;
+    }
+    console.log( JSON.stringify(out, null, 4) );
+};
+
 var checkHtmlFile = function(htmlfile, checksfile) {
-    $ = cheerioHtmlFile(htmlfile);
+    //$ = cheerioHtmlFile(htmlfile);
+    $ = cheerio.load(HtmlFile(htmlfile));
     var checks = loadChecks(checksfile).sort();
     var out = {};
     for(var ii in checks) {
@@ -65,11 +78,27 @@ var clone = function(fn) {
 if(require.main == module) {
     program
         .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
-        .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
+        //.option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
+        .option('-f, --file <html_file>', 'Path to index.html')
+        .option('-u, --url <app_url>', 'URL to the web app')
         .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
+    var htmlContent = '';
+    if ( program.file ) {
+      htmlContent = fs.readFileSync(program.file);
+      checkHtml(htmlContent, program.checks);
+    } else if ( program.url ) {
+      var rest = require('restler');
+      rest.get(program.url).on('complete', function(result) {
+        if (result instanceof Error) {
+          sys.puts('Error fetching url (' + program.url + '): ' + result.message);
+          //this.retry(5000); // try again after 5 sec
+        } else {
+          checkHtml( result, program.checks );
+        }
+      });
+    } else {
+      sys.puts("Must specify either '--url <URL>' or '--file <FILE>' option" );
+    }
 } else {
     exports.checkHtmlFile = checkHtmlFile;
 }
